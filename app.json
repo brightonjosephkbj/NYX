@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "NYX",
+    "slug": "nyx",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": { "backgroundColor": "#000000" },
+    "android": {
+      "package": "com.nyx.app",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_MEDIA_AUDIO",
+        "READ_MEDIA_VIDEO",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "plugins": [
+      "expo-av",
+      ["expo-media-library", {
+        "photosPermission": "Allow NYX to access your media.",
+        "savePhotosPermission": "Allow NYX to save media.",
+        "isAccessMediaLocationEnabled": true
+      }]
+    ]
+  }
+}
