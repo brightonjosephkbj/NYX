@@ -2,15 +2,17 @@ import { Audio, AVPlaybackStatus } from 'expo-av';
 
 class AudioService {
   private sound: Audio.Sound | null = null;
-  private onStatusUpdate: ((status: AVPlaybackStatus) => void) | null = null;
 
   async init() {
-    await Audio.setAudioModeAsync({
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-      allowsRecordingIOS: false,
-    });
+    try {
+      await Audio.setAudioModeAsync({
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+    } catch (e) { console.error('AudioService.init error:', e); }
   }
 
   async play(uri: string, onStatus?: (s: AVPlaybackStatus) => void) {
@@ -19,45 +21,23 @@ class AudioService {
         await this.sound.unloadAsync();
         this.sound = null;
       }
-      this.onStatusUpdate = onStatus || null;
       const { sound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true, volume: 1 },
-        this.onStatusUpdate || undefined
+        { uri, headers: { 'User-Agent': 'NYX/1.0' } },
+        { shouldPlay: true, volume: 1, progressUpdateIntervalMillis: 500 },
+        onStatus
       );
       this.sound = sound;
-    } catch (e) {
-      console.error('AudioService.play error:', e);
-    }
+    } catch (e) { console.error('AudioService.play error:', e); throw e; }
   }
 
-  async pause() {
-    try { await this.sound?.pauseAsync(); } catch {}
-  }
-
-  async resume() {
-    try { await this.sound?.playAsync(); } catch {}
-  }
-
+  async pause() { try { await this.sound?.pauseAsync(); } catch {} }
+  async resume() { try { await this.sound?.playAsync(); } catch {} }
   async stop() {
-    try {
-      await this.sound?.stopAsync();
-      await this.sound?.unloadAsync();
-      this.sound = null;
-    } catch {}
+    try { await this.sound?.stopAsync(); await this.sound?.unloadAsync(); this.sound = null; } catch {}
   }
-
-  async seekTo(ms: number) {
-    try { await this.sound?.setPositionAsync(ms); } catch {}
-  }
-
-  async setVolume(v: number) {
-    try { await this.sound?.setVolumeAsync(v); } catch {}
-  }
-
-  isLoaded() {
-    return this.sound !== null;
-  }
+  async seekTo(ms: number) { try { await this.sound?.setPositionAsync(ms); } catch {} }
+  async setVolume(v: number) { try { await this.sound?.setVolumeAsync(v); } catch {} }
+  isLoaded() { return this.sound !== null; }
 }
 
 export default new AudioService();
