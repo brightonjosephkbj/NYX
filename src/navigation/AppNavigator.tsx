@@ -1,9 +1,8 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { Text } from 'react-native';
 import { useThemeStore } from '../store/themeStore';
 import { usePlayerStore } from '../store/playerStore';
 import MiniPlayer from '../components/MiniPlayer';
@@ -19,10 +18,13 @@ import SettingsScreen from '../screens/SettingsScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
-function TabIcon({ name, focused, color }: { name: string; focused: boolean; color: string }) {
-  const icons: Record<string, string> = { Home: '⬡', Search: '◎', Library: '▤', Downloads: '⬇', ARIA: '◈' };
-  return <Text style={{ fontSize: focused ? 22 : 18, color }}>{icons[name] || '●'}</Text>;
-}
+const TAB_ICONS: Record<string, { active: string; inactive: string }> = {
+  Home:      { active: '⊞', inactive: '⊟' },
+  Search:    { active: '⦿', inactive: '◎' },
+  Library:   { active: '▦', inactive: '▤' },
+  Downloads: { active: '⤓', inactive: '⬇' },
+  ARIA:      { active: '◉', inactive: '◎' },
+};
 
 function Tabs({ navigation }: any) {
   const { theme } = useThemeStore();
@@ -33,11 +35,22 @@ function Tabs({ navigation }: any) {
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarStyle: { backgroundColor: theme.bg, borderTopColor: theme.border, borderTopWidth: 1, height: 60, paddingBottom: 6 },
+          tabBarStyle: {
+            backgroundColor: theme.bg,
+            borderTopColor: theme.border,
+            borderTopWidth: 1,
+            height: 64,
+            paddingBottom: 8,
+            paddingTop: 6,
+          },
           tabBarActiveTintColor: theme.primary,
           tabBarInactiveTintColor: theme.textMuted,
-          tabBarLabelStyle: { fontSize: 10, fontWeight: '600', letterSpacing: 1 },
-          tabBarIcon: ({ focused, color }) => <TabIcon name={route.name} focused={focused} color={color} />,
+          tabBarLabelStyle: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
+          tabBarIcon: ({ focused, color }) => (
+            <Text style={{ fontSize: focused ? 22 : 19, color }}>
+              {focused ? TAB_ICONS[route.name]?.active : TAB_ICONS[route.name]?.inactive}
+            </Text>
+          ),
         })}
       >
         <Tab.Screen name="Home" component={HomeScreen} />
@@ -59,7 +72,7 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { backgroundColor: theme.bg } }}>
         <Stack.Screen name="Tabs" component={Tabs} />
-        <Stack.Screen name="Player" component={PlayerScreen} options={{ presentation: 'modal', cardStyleInterpolator: ({ current }) => ({ cardStyle: { opacity: current.progress } }) }} />
+        <Stack.Screen name="Player" component={PlayerScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
