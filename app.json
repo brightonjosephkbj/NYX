@@ -8,6 +8,7 @@
     "splash": { "backgroundColor": "#000000" },
     "android": {
       "package": "com.nyx.app",
+      "versionCode": 1,
       "permissions": [
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
@@ -23,6 +24,9 @@
         "photosPermission": "Allow NYX to access your media.",
         "savePhotosPermission": "Allow NYX to save media.",
         "isAccessMediaLocationEnabled": true
+      }],
+      ["expo-image-picker", {
+        "photosPermission": "Allow NYX to access your photos."
       }]
     ]
   }
