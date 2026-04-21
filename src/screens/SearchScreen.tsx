@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, StatusBa
 import { useThemeStore } from '../store/themeStore';
 import BackgroundAnimation from '../components/BackgroundAnimation';
 import TrackItem from '../components/TrackItem';
-import { searchTracks, getInfo, getDownloadUrl } from '../services/api';
+import { getInfo, searchTracks } from '../services/api';
 import { usePlayerStore, Track } from '../store/playerStore';
 import { useDownloadStore, Download } from '../store/downloadStore';
 import { useLibraryStore } from '../store/libraryStore';
@@ -11,12 +11,14 @@ import audioService from '../services/audioService';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 
+const BASE = 'https://wave-backend-mjjm.onrender.com';
+
 export default function SearchScreen({ navigation }: any) {
   const { theme } = useThemeStore();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [urlMode, setUrlMode] = useState(false);
+  const [infoCache, setInfoCache] = useState<Record<string, any>>({});
   const { setCurrentTrack, setIsPlaying } = usePlayerStore();
   const { addDownload, updateDownload } = useDownloadStore();
   const { addTrack } = useLibraryStore();
@@ -26,37 +28,74 @@ export default function SearchScreen({ navigation }: any) {
   const search = async () => {
     if (!query.trim()) return;
     setLoading(true);
+    setResults([]);
     try {
       if (isUrl(query)) {
         const info = await getInfo(query);
-        setResults([{ ...info, url: query }]);
+        if (info) {
+          setInfoCache(prev => ({ ...prev, [query]: info }));
+          setResults([info]);
+        }
       } else {
         const data = await searchTracks(query);
         setResults(data?.results || []);
       }
-    } catch { Alert.alert('Error', 'Search failed. Try again.'); }
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.error || e.message || 'Search failed');
+    }
     setLoading(false);
+  };
+
+  const getBestAudioFormat = (formats: any[]) => {
+    if (!formats || formats.length === 0) return null;
+    // Prefer m4a audio only
+    const m4a = formats.find(f => f.ext === 'm4a' && f.vcodec === 'none' && f.acodec !== 'none');
+    if (m4a) return m4a;
+    // Prefer webm audio only
+    const webm = formats.find(f => f.ext === 'webm' && f.vcodec === 'none' && f.acodec !== 'none');
+    if (webm) return webm;
+    // Any audio only
+    const audio = formats.find(f => f.vcodec === 'none' && f.acodec !== 'none');
+    if (audio) return audio;
+    // Fallback: format 18 (360p with audio)
+    const f18 = formats.find(f => f.format_id === '18');
+    if (f18) return f18;
+    // Last resort: anything
+    return formats[formats.length - 1];
+  };
+
+  const getStreamUrl = (info: any, fmt: any) => {
+    return `${BASE}/download/file?url=${encodeURIComponent(info.webpage_url || info.url || query)}&format_id=${fmt.format_id}`;
+  };
+
+  const fetchInfo = async (item: any) => {
+    const key = item.webpage_url || item.url || query;
+    if (infoCache[key]) return infoCache[key];
+    const info = await getInfo(key);
+    setInfoCache(prev => ({ ...prev, [key]: info }));
+    return info;
   };
 
   const playTrack = async (item: any) => {
     try {
-      const info = isUrl(query) ? item : await getInfo(item.url || item.webpage_url);
-      const audioFmt = (info.formats || []).find((f: any) => f.ext === 'm4a' && f.acodec !== 'none' && f.vcodec === 'none') || (info.formats || [])[0];
-      if (!audioFmt) return Alert.alert('Error', 'No playable format found');
-      const playUrl = getDownloadUrl(info.url || item.url, audioFmt.format_id);
+      setLoading(true);
+      const info = await fetchInfo(item);
+      const fmt = getBestAudioFormat(info.formats || []);
+      if (!fmt) { Alert.alert('Error', 'No playable format found'); setLoading(false); return; }
+      const streamUrl = getStreamUrl(info, fmt);
       const track: Track = {
-        id: item.id || Date.now().toString(),
-        title: info.title || item.title,
-        artist: info.uploader || item.artist || 'Unknown',
-        thumbnail: info.thumbnail || item.thumbnail,
-        url: playUrl,
+        id: info.id || Date.now().toString(),
+        title: info.title || 'Unknown',
+        artist: info.uploader || info.channel || 'Unknown',
+        thumbnail: info.thumbnail,
+        url: streamUrl,
         duration: info.duration || 0,
         isVideo: false,
       };
       setCurrentTrack(track);
       addTrack(track);
       await audioService.init();
-      await audioService.play(playUrl, (status) => {
+      await audioService.play(streamUrl, (status) => {
         if (status.isLoaded) {
           usePlayerStore.getState().setPosition(status.positionMillis || 0);
           usePlayerStore.getState().setDuration(status.durationMillis || 0);
@@ -64,25 +103,38 @@ export default function SearchScreen({ navigation }: any) {
         }
       });
       setIsPlaying(true);
+      setLoading(false);
       navigation.navigate('Player');
-    } catch (e: any) { Alert.alert('Playback Error', e.message || 'Could not play track'); }
+    } catch (e: any) {
+      setLoading(false);
+      Alert.alert('Playback Error', e.message || 'Could not play track');
+    }
   };
 
   const downloadTrack = async (item: any) => {
     try {
       const perms = await MediaLibrary.requestPermissionsAsync();
       if (!perms.granted) return Alert.alert('Permission needed', 'Allow media access to save downloads');
-      const info = await getInfo(item.url || item.webpage_url || query);
-      const fmt = (info.formats || []).find((f: any) => f.ext === 'mp3') || (info.formats || []).find((f: any) => f.acodec !== 'none' && f.vcodec === 'none') || (info.formats || [])[0];
-      if (!fmt) return Alert.alert('Error', 'No downloadable format');
-      const dlUrl = getDownloadUrl(info.url || item.url || query, fmt.format_id);
+      setLoading(true);
+      const info = await fetchInfo(item);
+      const fmt = getBestAudioFormat(info.formats || []);
+      if (!fmt) { Alert.alert('Error', 'No downloadable format'); setLoading(false); return; }
+      const dlUrl = getStreamUrl(info, fmt);
       const dlId = Date.now().toString();
       const dl: Download = {
-        id: dlId, title: info.title || item.title, artist: info.uploader || 'Unknown',
-        thumbnail: info.thumbnail, url: dlUrl, format: fmt.ext, quality: fmt.quality || 'auto',
-        progress: 0, status: 'downloading', createdAt: Date.now(),
+        id: dlId,
+        title: info.title || 'Unknown',
+        artist: info.uploader || info.channel || 'Unknown',
+        thumbnail: info.thumbnail,
+        url: dlUrl,
+        format: fmt.ext,
+        quality: fmt.quality || 'auto',
+        progress: 0,
+        status: 'downloading',
+        createdAt: Date.now(),
       };
       addDownload(dl);
+      setLoading(false);
       Alert.alert('Downloading', `"${dl.title}" added to downloads`);
       const dest = FileSystem.documentDirectory + `${dlId}.${fmt.ext}`;
       const cb = FileSystem.createDownloadResumable(dlUrl, dest, {}, (p) => {
@@ -94,15 +146,18 @@ export default function SearchScreen({ navigation }: any) {
         await MediaLibrary.saveToLibraryAsync(result.uri);
         updateDownload(dlId, { status: 'done', progress: 1, localPath: result.uri });
       }
-    } catch (e: any) { Alert.alert('Download failed', e.message); }
+    } catch (e: any) {
+      setLoading(false);
+      Alert.alert('Download failed', e.message);
+    }
   };
 
   const toTrack = (item: any): Track => ({
     id: item.id || Date.now().toString(),
     title: item.title || 'Unknown',
-    artist: item.uploader || item.artist || 'Unknown',
+    artist: item.uploader || item.channel || item.artist || 'Unknown',
     thumbnail: item.thumbnail,
-    url: item.url || item.webpage_url || query,
+    url: item.webpage_url || item.url || query,
     duration: item.duration || 0,
     isVideo: false,
   });
@@ -124,8 +179,9 @@ export default function SearchScreen({ navigation }: any) {
           onSubmitEditing={search}
           returnKeyType="search"
           autoCapitalize="none"
+          autoCorrect={false}
         />
-        <TouchableOpacity onPress={search} style={[styles.searchBtn, { backgroundColor: theme.primary + '22' }]}>
+        <TouchableOpacity onPress={search} style={[styles.searchBtn, { backgroundColor: theme.primary + '33' }]}>
           <Text style={{ color: theme.primary, fontWeight: '700' }}>GO</Text>
         </TouchableOpacity>
       </View>
