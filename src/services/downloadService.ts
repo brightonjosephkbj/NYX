@@ -8,17 +8,17 @@ const BASE = 'https://wave-backend-mjjm.onrender.com';
 export const downloadTrack = async (info: any, formatExt: string, quality: string, formatId: string) => {
   const { addDownload, updateDownload } = useDownloadStore.getState();
 
-  // Request permissions first
   const { status } = await MediaLibrary.requestPermissionsAsync();
   if (status !== 'granted') throw new Error('Storage permission denied');
 
   const dlId = Date.now().toString();
   const pageUrl = info.webpage_url || info.url;
   const dlUrl = `${BASE}/download/file?url=${encodeURIComponent(pageUrl)}&format_id=${formatId}`;
+
+  // Save to documentDirectory — expo-av can play file:// URIs here
   const filename = `NYX_${dlId}.${formatExt}`;
   const localUri = FileSystem.documentDirectory + filename;
 
-  // Add to downloads list
   addDownload({
     id: dlId,
     title: info.title || 'Unknown',
@@ -33,7 +33,6 @@ export const downloadTrack = async (info: any, formatExt: string, quality: strin
   });
 
   try {
-    // Download with progress tracking
     const downloadResumable = FileSystem.createDownloadResumable(
       dlUrl,
       localUri,
@@ -49,11 +48,12 @@ export const downloadTrack = async (info: any, formatExt: string, quality: strin
     const result = await downloadResumable.downloadAsync();
     if (!result?.uri) throw new Error('Download failed - no file created');
 
-    // Save to media library (phone gallery/storage)
-    const asset = await MediaLibrary.createAssetAsync(result.uri);
+    // file:// URI — playable by expo-av
+    const playableUri = result.uri;
 
-    // Try to move to Downloads folder
+    // Also copy to media library so it appears in gallery
     try {
+      const asset = await MediaLibrary.createAssetAsync(result.uri);
       const album = await MediaLibrary.getAlbumAsync('NYX Downloads');
       if (album) {
         await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
@@ -62,28 +62,30 @@ export const downloadTrack = async (info: any, formatExt: string, quality: strin
       }
     } catch {}
 
-    // Update download as complete with local path
+    // Store the file:// URI — NOT content:// 
     updateDownload(dlId, {
       status: 'done',
       progress: 1,
-      localPath: asset.uri,
+      localPath: playableUri,
     });
 
-    // Add to library with local path for playback
+    // Add to library with playable file:// URI
     useLibraryStore.getState().addTrack({
       id: dlId,
       title: info.title || 'Unknown',
       artist: info.uploader || info.channel || 'Unknown',
       thumbnail: info.thumbnail,
-      url: asset.uri,
-      localPath: asset.uri,
+      url: playableUri,
+      localPath: playableUri,
       duration: info.duration || 0,
       isVideo: formatExt === 'mp4' || formatExt === 'webm',
     });
 
-    return { localPath: asset.uri, dlId };
+    return { localPath: playableUri, dlId };
   } catch (e: any) {
     updateDownload(dlId, { status: 'failed', error: e.message });
+    // Cleanup failed file
+    try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch {}
     throw e;
   }
 };
