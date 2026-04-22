@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build NYX APK
 on:
   push:
     branches: [master]
@@ -7,15 +7,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Install dependencies
         run: npm install
-      - name: Install EAS CLI
-        run: npm install -g eas-cli
-      - name: Build Android APK
-        run: eas build --platform android --profile preview --non-interactive
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install Expo CLI
+        run: npm install -g expo-cli @expo/cli
+
+      - name: Prebuild Android
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NYX-release.apk
+          path: android/app/build/outputs/apk/release/*.apk
