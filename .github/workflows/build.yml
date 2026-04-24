@@ -1,7 +1,9 @@
 name: Build NYX APK
+
 on:
   push:
     branches: [master]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,14 +33,14 @@ jobs:
       - name: Prebuild Android
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build APK
+      - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -x lint
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NYX-release
-          path: android/app/build/outputs/apk/release/*.apk
+          name: NYX-debug
+          path: android/app/build/outputs/apk/debug/*.apk
