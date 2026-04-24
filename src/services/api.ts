@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE = 'https://wave-backend-mjjm.onrender.com';
+const BASE = 'http://localhost:8766';
 
 const api = axios.create({ baseURL: BASE, timeout: 30000 });
 

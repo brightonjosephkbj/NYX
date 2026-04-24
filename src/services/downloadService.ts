@@ -3,7 +3,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { useDownloadStore } from '../store/downloadStore';
 import { useLibraryStore } from '../store/libraryStore';
 
-const BASE = 'https://wave-backend-mjjm.onrender.com';
+const BASE = 'http://localhost:8766';
 
 export const downloadTrack = async (info: any, formatExt: string, quality: string, formatId: string) => {
   const { addDownload, updateDownload } = useDownloadStore.getState();
